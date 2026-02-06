@@ -15,3 +15,12 @@ The system consists of four main components:
 3. Run the system:
    ```bash
    docker compose up --build
+
+Pull the model(first time only)
+   docker exec -it ollama ollama pull llama3.2
+
+Post a message to the Bot service
+
+curl -X POST http://localhost:5003/message \
+     -H "Content-Type: application/json" \
+     -d '{"input": "set tournament service memory to 1024mb"}'
