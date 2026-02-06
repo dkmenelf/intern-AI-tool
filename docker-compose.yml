@@ -1,0 +1,95 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - ai-config-network
+
+  schema-service:
+    build:
+      context: ./schema-server
+      dockerfile: Dockerfile
+    container_name: schema-service
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./data/schemas:/data/schemas:ro
+    environment:
+      - SCHEMA_DIR=/data/schemas
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ai-config-network
+
+  values-service:
+    build:
+      context: ./values-server
+      dockerfile: Dockerfile
+    container_name: values-service
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./data/values:/data/values:ro
+    environment:
+      - VALUES_DIR=/data/values
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ai-config-network
+
+  bot-service:
+    build:
+      context: ./bot-server
+      dockerfile: Dockerfile
+    container_name: bot-service
+    ports:
+      - "5003:5003"
+    depends_on:
+      schema-service:
+        condition: service_healthy
+      values-service:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      - SCHEMA_SERVICE_URL=http://schema-service:5001
+      - VALUES_SERVICE_URL=http://values-service:5002
+      - OLLAMA_URL=http://ollama:11434
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - ai-config-network
+
+networks:
+  ai-config-network:
+    driver: bridge
+
+volumes:
+  ollama-data:
+    driver: local
